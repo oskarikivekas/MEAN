@@ -1,66 +1,100 @@
-var express = require('express');
-const { ExtractJwt } = require('passport-jwt');
-const passport = require('../auth/passport');
-const jwt = require('jsonwebtoken');
-const User = require('../models/user');
-var router = express.Router();
+const express = require("express");
+const router = express.Router();
+const {body} = require("express-validator");
+const jwt = require("jsonwebtoken");
+var passwordValidator = require("password-validator");
+const passport = require("passport");
 
-/* GET users listing. */
-router.get('/', passport.authenticate("jwt", {session: false}),function(req, res, next) {
-  // IF not logged in
-  // This is normally done using some kind of session management. 
-  if (!req.body.user) {
-    res.json({user: user, signedIn: true})
-  } else {
-    res.json({user: null, signedIn: false});
-  }
-  
-});
+var schema = new passwordValidator();
+schema.is().min(8).has().uppercase().has().lowercase().has().digits().has().symbols();
 
-router.post('/login', async (req, res, next) => {
+const User = require("../models/user");
 
-  User.getUserByUsername(username, (user, err) => {
-    if(err) throw err;
+/* REGISTER POST */
+router.post("/register",
+    //In the real world you would want to actually sanitize all inputs
+    body("username").trim().escape(),
+    body("password").trim(),
+    async (req, res, next) => {
 
-    if (!user) {
-      res.status(403).json({success: false, msg: "Incorrect username"});
-    }
-    User.comparePassword(req.body.password, user.password, (success, err) => {
-      if (err) throw err;
-      if(!success) {
-        res.status(403).json({success: false, msg: "Incorrect password"});
-      }
-      // Token set to expire in 2 hours
-      const token = jwt.sign({data: user}, process.env.SECRET, {expiresIn: 7200});
-      res.json({
-        success: true,
-        token: 'JWT '+ token,
-        user: {
-          id: user._id,
-          name: user.name,
-          username: user.username,
-          email: user.email
+        let alreadyUser = await User.getUserByUsername(req.body.username);
+
+        if (alreadyUser) {
+            return res.json({ success: false, msg: 'Already user with this username, try to login!' });  
         }
-      });
+        
+        let emailInUse = await User.getUserByEmail(req.body.email);
+        
+        if (emailInUse) {
+            return res.json({ success: false, msg: 'Email is already in use, try to login!' });   
+        }
+
+        const newUser = new User({
+            name: req.body.name,
+            email: req.body.email,
+            username: req.body.username,
+            password: req.body.password
+          });
+        
+        let success = await User.createUser(newUser);
+
+        if (success) {
+            res.json({ success: true, msg: 'User registered'}); 
+        } else {
+            res.json({ success: false, msg: 'Failed to register user' });   
+        }
+    }
+);
+
+/* LOGIN POST */
+router.post("/login",
+    body("username").trim().escape(),
+    body("password").trim(),
+    async (req, res, next) => {
+        const password = req.body.password;
+        let user = await User.getUserByUsername(req.body.username);
+ 
+        if (!user){
+            return res.json({ success: false, msg: 'User not found' }); 
+        }
+            
+        let isMatch = await User.comparePassword(password, user.password);
+
+        if (isMatch) {
+            const token = jwt.sign({ data: user }, process.env.SECRET, {
+            expiresIn: 7200 // 2 hours
+            });
+
+            res.json({
+            success: true,
+            token: `Bearer ${token}`,
+            user: {
+                id: user._id,
+                name: user.name,
+                username: user.username,
+                email: user.email
+            }
+            });
+
+        } else {
+            return res.json({ success: false, msg: 'Wrong password' });
+        }
+});
+  
+    
+// Profile
+router.get('/profile', 
+    passport.authenticate('jwt', { session: false }), 
+    (req, res, next) => {
+        
+    res.json({
+    user: {
+        _id: req.user._id,
+        name: req.user.name,
+        username: req.user.username,
+        email: req.user.email,
+    }
     });
-  });
 });
-
-router.post('/register', async (req, res, next) => { 
-  //check if user already exists
-    //validate password format
-    //create user from body
-    //try to save user
-
-  //else fail
-  res.send("Register" + req.body);
-});
-
-
-router.get("/profile", async (req, res, next) => {
-  res.send("Profile page" + req.body);
-});
-
-
 
 module.exports = router;

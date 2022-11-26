@@ -1,8 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
-// config file not needed since we can just fetch env variables 
-
 const UserSchema = new mongoose.Schema({
     name:{
         type: String, 
@@ -23,34 +21,41 @@ const UserSchema = new mongoose.Schema({
     }
 });
 
-const User = mongoose.model('user', UserSchema); 
+const User = module.exports = mongoose.model('user', UserSchema); 
 
-// functions
+// db functions
 
-module.exports.getUserById = (id, callback) => {
-    User.findById(id, callback);
+// error handling to be improved..
+
+module.exports.getUserById = async (id) => {
+    return await User.findById(id);
 }
 
-module.exports.getUserByUsername = (username, callback) => {
-    User.findOne({username: username}, callback)
+module.exports.getUserByUsername = async (username) => {
+    return await User.findOne({username: username});
 }
 
-module.exports.createUser = (newUser, callback) => {
-
-    bcrypt.genSalt(10, (err, salt) => {
-        bcrypt.hash(req.body.password, salt, async (err, hash) => {
-            if(err) throw err;
-            newUser.password = hash;
-            newUser.save(callback)
-        });
-    });
+module.exports.getUserByEmail = async (email) => {
+    return await User.findOne({email: email});
 }
 
-module.exports.comparePassword = (password, hashedPw, callback) => {
-    bcrypt.compare(password, hashedPw, (err, isMatch) => {
-      if(err) throw err;
-      callback(null, isMatch);
-    });
+module.exports.createUser = async (user) => {
+    try {
+        const pw = await user.password;
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash(pw, salt);
+        
+        user.password = hash;
+        await user.save(); 
+        return true;    
+
+    } catch (err) {
+        console.log(err);
+        return false;
+    }
+   
 }
 
-module.exports = User;
+module.exports.comparePassword = async (pw, hashedPw) => {
+    return await bcrypt.compare(pw, hashedPw);    
+}
